@@ -1,0 +1,8 @@
+services:
+  email_attachment_to_dir:
+    build: .
+    volumes: 
+      - /mnt/mp_feuer_server_fgh/MP-FEUER_Exporte/Einsatzberichte:/Einsatzberichte
+      - ./tmp:/tmp
+    container_name: email_attachment_to_dir
+    restart: unless-stopped
