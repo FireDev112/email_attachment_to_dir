@@ -57,7 +57,10 @@ class FetchEmail():
             filename = f"{type_of_message}__{filename}"
             att_path = os.path.join(download_folder, filename)
 
-            if not os.path.isfile(att_path):
+            print(f"Filename: {filename} Type:{type(filename)}")
+            # Nur erstellen wenn es sich um eine PDF Datei handelt
+            if not os.path.isfile(att_path) and ".pdf" in filename:
+                print(f"Datei abspeichern: {filename}")
                 fp = open(att_path, 'wb')
                 fp.write(part.get_payload(decode=True))
                 fp.close()
@@ -94,6 +97,8 @@ class FetchEmail():
         for element in msg._headers:
             if element[0] == 'From':
                 try:
+                    print(element)
+                    return True
                     sender_mail = element[1].split('"')[1]
                     if  sender_mail in self.list_with_corr_mail_adresses:
                         return True

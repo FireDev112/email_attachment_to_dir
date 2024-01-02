@@ -4,6 +4,7 @@ import os
 import time
 import shutil
 import mariadb
+import datetime
 
 
 class EmailAttachmentHandler():
@@ -80,6 +81,7 @@ class EmailAttachmentHandler():
                             print(src_path)
                             try: 
                                 shutil.move(src_path, new_path)
+                                self.write_attachment_stored_in_db(klst_nr, attachment_type)
                             except Exception as e:
                                 print(f"Datei konnte nicht kopiert werden: {e}")
                                 print(f"Src: {src_path}, Dst: {new_path}")
@@ -88,6 +90,14 @@ class EmailAttachmentHandler():
                             continue
                     else:
                         print(f"Keine KLST NR in Element Namen gefunden: {element}")
+                        # Prüfen ob ein None im Namen ist
+                        if "None" in element:
+                            try:
+                                src_path = os.path.join(self.temp_dir, element)
+                                dst_path = os.path.join(self.temp_dir, "fehler", element)
+                                shutil.move(src_path,dst_path)
+                            except Exception as e:
+                                print(f"Fehler beim kopieren: {element} {e}")
                         continue
         except Exception as e:
             print(f"Fehler beim Öffnen des Verzeichnisses: {self.temp_dir}: {e}")
@@ -96,7 +106,12 @@ class EmailAttachmentHandler():
     def get_klst_nr_and_type_from_attachment(self, attachment_name):
         klst_nr="KLST_NR_NOT_FOUND"
         attachment_type="TYPE_NOT_FOUND"
+        print(f"Get KLSTRNr from Name: {attachment_name}")
         try:
+            # Bei Fehlern ist ein "None" im Namen
+            if "None" in attachment_name:
+                return klst_nr, attachment_type
+
             # Unterscheiden in Alarmdepeche und Einsatzabschlussbericht
             if "Alarmdepeche" in attachment_name:
                 attachment_type = "Alarmdepesche"
@@ -111,11 +126,54 @@ class EmailAttachmentHandler():
         
         except Exception as e:
             print(f"Fehler beim ermiitelnm der KLST Nr: {attachment_name}  {e}")
-
+        print(f"KLST_NR: {klst_nr}, Type: {attachment_type}")
         return klst_nr, attachment_type
+    
+    def write_attachment_stored_in_db(self, klst_nr, attachment_type):
+        print(f"In DB schreiben, dass Anhang abgespeichert wurde: {klst_nr}, {attachment_type}")
+        if attachment_type == "Alarmdepesche":
+            sql_expr = f'UPDATE {self.maria_db_database}.{self.maria_db_table} SET EINSATZ_DEPECHE_STORED=TRUE WHERE LST_NR LIKE "%{klst_nr}"'
+        elif attachment_type == "Abschlussbericht":
+            ts = time.time()
+            timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+            sql_expr = f'UPDATE {self.maria_db_database}.{self.maria_db_table} SET ABSCHLUSS_BERICHT_STORED=TRUE, DATE_TIME_ABSCHLUSS_BERICHT="{timestamp}" WHERE LST_NR LIKE "%{klst_nr}"'
+        else:
+            return False
+        # Versuchen in die Maria DB zu schreiben
+        try:
+            conn = mariadb.connect(
+                user=self.maria_db_user,
+                password=self.maria_db_pwd,
+                host=self.maria_db_ip,
+                port=self.maria_db_port,
+                database=self.maria_db_database
+            )
+            print("Erfolgreich mit der DB Verbunden ")
+            # Get Cursor
+            cur = conn.cursor()
+            # Versuchen Daten aus DB zuholen
+            try: 
+                print(f"SQL_EXPR: {sql_expr}")
+                cur.execute(sql_expr)
+            except Exception as e:
+                print(f"Fehler im SQL Expr: {e}")
             
+            # Daten an Datenbank übertragen
+            try:
+                conn.commit()
+            except:
+                print(f"Es konnten keine Daten in die DB geschrieben werden!: {e}")
+
+            # Von der DB abmelden
+            conn.close()
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB Platform: {e}")
+        
+
     
     def get_path_from_klst_nr(self, klst_nr):
+        print(f"Dateipfad aus MariaDB für {klst_nr} finden.")
          # Connect to MariaDB Platform
         path_to_dir_=self.INVALID_PATH
         try:
